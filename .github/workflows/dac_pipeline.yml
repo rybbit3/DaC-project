@@ -65,15 +65,13 @@ jobs:
           Invoke-AtomicTest T1059.001 -TestNumbers 1
         "
 
-        # 2. [Upgrade] 로그 포맷을 JSON으로 변경 (Splunk가 필드를 100% 인식하도록 함)
-        echo "{\"timestamp\": \"$(date -Iseconds)\", \"host\": \"github-runner\", \"user\": \"admin\", \"process_name\": \"pwsh\", \"command_line\": \"Invoke-AtomicTest T1059.001 -TestNumbers 1\", \"action\": \"allowed\"}" > attack.json
+        # 2. [수정] timestamp 필드 제거! (Timezone 문제 해결)
+        # Splunk가 수신 시간을 기준으로 인덱싱하도록 합니다.
+        echo "{\"host\": \"github-runner\", \"user\": \"admin\", \"process_name\": \"pwsh\", \"command_line\": \"Invoke-AtomicTest T1059.001 -TestNumbers 1\", \"action\": \"allowed\"}" > attack.json
         
-        # 3. Splunk에 로그 주입 (JSON 모드)
+        # 3. Splunk에 로그 주입
         docker cp attack.json my-splunk-lab:/tmp/
-        
-        # 파일 권한 수정 후 주입
         docker exec --user root my-splunk-lab chown splunk:splunk /tmp/attack.json
-        # -sourcetype _json : 이게 핵심입니다. JSON으로 넣으면 필드가 자동 추출됩니다.
         docker exec --user splunk my-splunk-lab /opt/splunk/bin/splunk add oneshot /tmp/attack.json -index main -sourcetype _json -auth admin:admin1234
 
 
