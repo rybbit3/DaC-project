@@ -44,23 +44,24 @@ jobs:
         docker exec --user root my-splunk-lab chown -R splunk:splunk /opt/splunk/etc/apps/search/local
         
         # Splunk 설정을 다시 읽어오기
-        docker exec my-splunk-lab splunk _internal call /services/data/ui/views/_reload -auth admin:admin1234 || true
-        
+        # splunk 명령어 앞에 /opt/splunk/bin/ 을 붙여줍니다.
+        docker exec my-splunk-lab /opt/splunk/bin/splunk _internal call /services/data/ui/views/_reload -auth admin:admin1234 || true
+
         # 재시작 및 대기
         docker restart my-splunk-lab
         echo "⏳ Splunk 재시작 대기 중..."
         sleep 60
-        
+
 # 5. [Test] Atomic Red Team 공격 실행 (Attack Simulation)
     - name: Execute Attack (T1059.001)
       run: |
         export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin
         echo "⚔️ 공격 시뮬레이션 시작!"
         
-        # [핵심] 모듈을 강제로 로드한 뒤 공격 명령을 수행합니다.
-        # $HOME은 맥북 사용자의 홈 디렉토리(/Users/admin 등)를 의미합니다.
+        # [수정] 경로 걱정 없이, 없으면 알아서 설치하고 바로 실행하는 안전한 코드입니다.
         pwsh -Command "
-          Import-Module '$HOME/AtomicRedTeam/invoke-atomicredteam/Invoke-AtomicRedTeam.psd1' -Force; 
+          IEX (IWR 'https://raw.githubusercontent.com/redcanaryco/invoke-atomicredteam/master/install-atomicredteam.ps1' -UseBasicParsing);
+          Install-AtomicRedteam -getAtomics -Force;
           Invoke-AtomicTest T1059.001 -TestNumbers 1
         "
 
