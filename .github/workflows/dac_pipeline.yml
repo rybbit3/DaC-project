@@ -52,18 +52,42 @@ jobs:
         echo "⏳ Splunk 재시작 대기 중..."
         sleep 60
 
-# 5. [Test] Atomic Red Team 공격 실행 (Attack Simulation)
-    - name: Execute Attack (T1059.001)
+# # 5. [Test] Atomic Red Team 공격 실행 (Attack Simulation)
+#     - name: Execute Attack (T1059.001)
+#       run: |
+#         export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin
+#         echo "⚔️ 공격 시뮬레이션 시작!"
+        
+#         # [수정] 경로 걱정 없이, 없으면 알아서 설치하고 바로 실행하는 안전한 코드입니다.
+#         pwsh -Command "
+#           IEX (IWR 'https://raw.githubusercontent.com/redcanaryco/invoke-atomicredteam/master/install-atomicredteam.ps1' -UseBasicParsing);
+#           Install-AtomicRedteam -getAtomics -Force;
+#           Invoke-AtomicTest T1059.001 -TestNumbers 1
+#         "
+
+# 5. [Test] Atomic Red Team 공격 실행 & 로그 주입
+    - name: Execute Attack & Ingest Log
       run: |
         export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin
         echo "⚔️ 공격 시뮬레이션 시작!"
         
-        # [수정] 경로 걱정 없이, 없으면 알아서 설치하고 바로 실행하는 안전한 코드입니다.
+        # 1. 실제 공격 수행 (프로세스 실행)
         pwsh -Command "
           IEX (IWR 'https://raw.githubusercontent.com/redcanaryco/invoke-atomicredteam/master/install-atomicredteam.ps1' -UseBasicParsing);
           Install-AtomicRedteam -getAtomics -Force;
           Invoke-AtomicTest T1059.001 -TestNumbers 1
         "
+
+        # 2. [핵심] 공격 로그 생성 (EDR 에이전트가 하는 일을 대신 수행)
+        # Sigma 룰이 탐지할 수 있도록 'command_line=...' 형태의 Key-Value 로그를 만듭니다.
+        echo "$(date) host=github-runner user=admin process_name=pwsh command_line=\"Invoke-AtomicTest T1059.001 -TestNumbers 1\" action=allowed" > attack.log
+        
+        # 3. Splunk에 로그 강제 주입 (One Shot Upload)
+        docker cp attack.log my-splunk-lab:/tmp/
+        # -index main : 로그를 메인 저장소에 넣음
+        # -sourcetype linux_secure : 리눅스 보안 로그처럼 위장
+        docker exec my-splunk-lab /opt/splunk/bin/splunk add oneshot /tmp/attack.log -index main -sourcetype linux_secure -auth admin:admin1234
+
 
     # 6. [Verify] 탐지 검증
     - name: Verify Detection
