@@ -65,16 +65,16 @@ jobs:
           Invoke-AtomicTest T1059.001 -TestNumbers 1
         "
 
-        # 2. 공격 로그 생성
-        echo "$(date) host=github-runner user=admin process_name=pwsh command_line=\"Invoke-AtomicTest T1059.001 -TestNumbers 1\" action=allowed" > attack.log
+        # 2. [Upgrade] 로그 포맷을 JSON으로 변경 (Splunk가 필드를 100% 인식하도록 함)
+        echo "{\"timestamp\": \"$(date -Iseconds)\", \"host\": \"github-runner\", \"user\": \"admin\", \"process_name\": \"pwsh\", \"command_line\": \"Invoke-AtomicTest T1059.001 -TestNumbers 1\", \"action\": \"allowed\"}" > attack.json
         
-        # 3. Splunk에 로그 강제 주입
-        docker cp attack.log my-splunk-lab:/tmp/
+        # 3. Splunk에 로그 주입 (JSON 모드)
+        docker cp attack.json my-splunk-lab:/tmp/
         
-        # [핵심 수정 3] 로그 주입할 때도 '--user splunk' 필수!
-        # 로그 파일 권한도 맞춰줍니다.
-        docker exec --user root my-splunk-lab chown splunk:splunk /tmp/attack.log
-        docker exec --user splunk my-splunk-lab /opt/splunk/bin/splunk add oneshot /tmp/attack.log -index main -sourcetype linux_secure -auth admin:admin1234
+        # 파일 권한 수정 후 주입
+        docker exec --user root my-splunk-lab chown splunk:splunk /tmp/attack.json
+        # -sourcetype _json : 이게 핵심입니다. JSON으로 넣으면 필드가 자동 추출됩니다.
+        docker exec --user splunk my-splunk-lab /opt/splunk/bin/splunk add oneshot /tmp/attack.json -index main -sourcetype _json -auth admin:admin1234
 
 
     # 6. [Verify] 탐지 검증
