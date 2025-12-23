@@ -54,14 +54,16 @@ search = {query}
 description = {description}
 enable_sched = 1
 cron_schedule = * * * * *
-dispatch.earliest_time = -5m
-dispatch.latest_time = now
+dispatch.earliest_time = -24h      
+dispatch.latest_time = +24h       
 action.summary_index = 1
 action.summary_index._name = incidents
 action.summary_index.report = {title}
 alert.severity = 4
 disabled = 0
 """
+# 주석: earliest_time = -24h (과거 24시간), latest_time = +24h (미래 24시간)
+# 이렇게 하면 시차가 아무리 꼬여도 무조건 범위 안에 들어옵니다.
                 outfile.write(stanza + "\n")
                 print(f"✅ Created Scenario: {title}")
                 

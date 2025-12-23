@@ -31,50 +31,47 @@ jobs:
     - name: Build Splunk Config
       run: python3 pipeline.py
 
-# 4. [Deploy] Docker 컨테이너로 배포 
+# 4. [Deploy] 설정 파일(룰, 인덱스) 배포
     - name: Deploy to Splunk
       run: |
-        # [수정 1] 권한 문제 원천 봉쇄 (Splunk 폴더 전체 소유권 변경)
-        docker exec --user root my-splunk-lab chown -R splunk:splunk /opt/splunk
-        
-        # [핵심 해결책] 인시던트 저장용 Index 자동 생성
-        # 컨테이너가 재성성되더라도 파이프라인이 알아서 인덱스를 만듭니다.
-        # (이미 존재하면 에러가 날 수 있으니 || true 로 무시)
-        docker exec --user splunk my-splunk-lab /opt/splunk/bin/splunk add index incidents -auth admin:admin1234 || true
-        
         # 목적지 폴더 생성
-        docker exec --user splunk my-splunk-lab mkdir -p /opt/splunk/etc/apps/search/local
+        docker exec --user root my-splunk-lab mkdir -p /opt/splunk/etc/apps/search/local
         
-        # 설정 파일 복사
+        # [핵심] 1. 룰 파일(savedsearches.conf) 복사
         docker cp savedsearches.conf my-splunk-lab:/opt/splunk/etc/apps/search/local/
         
-        # 복사된 파일 권한 재수정 (cp는 root로 들어가므로)
-        docker exec --user root my-splunk-lab chown splunk:splunk /opt/splunk/etc/apps/search/local/savedsearches.conf
+        # [핵심] 2. 인덱스 설정 파일(indexes.conf) 복사 -> 이제 인덱스 사라질 걱정 끝!
+        docker cp indexes.conf my-splunk-lab:/opt/splunk/etc/apps/search/local/
         
-        # 재시작 (설정 적용)
+        # 3. 권한 대통합 (Root -> Splunk)
+        docker exec --user root my-splunk-lab chown -R splunk:splunk /opt/splunk
+        
+        # 4. 설정 리로드 (Splunk 유저로 실행)
+        docker exec --user splunk my-splunk-lab /opt/splunk/bin/splunk _internal call /services/data/ui/views/_reload -auth admin:admin1234 || true
+
+        # 재시작
         docker restart my-splunk-lab
         echo "⏳ Splunk 재시작 대기 중..."
         sleep 60
 
-        
-# 5. [Test] Atomic Red Team 공격 실행 & 로그 주입
+  # 5. [Test] 공격 및 로그 주입
     - name: Execute Attack & Ingest Log
       run: |
         export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin
         echo "⚔️ 공격 시뮬레이션 시작!"
         
-        # 1. 실제 공격 수행
+        # 1. 공격 수행 (설치 포함)
         pwsh -Command "
           IEX (IWR 'https://raw.githubusercontent.com/redcanaryco/invoke-atomicredteam/master/install-atomicredteam.ps1' -UseBasicParsing);
           Install-AtomicRedteam -getAtomics -Force;
           Invoke-AtomicTest T1059.001 -TestNumbers 1
         "
 
-        # 2. [수정] timestamp 필드 제거! (Timezone 문제 해결)
-        # Splunk가 수신 시간을 기준으로 인덱싱하도록 합니다.
+        # 2. [핵심] 로그에서 'timestamp' 제거! & JSON 포맷
+        # 시간을 빼버리면 Splunk가 수신한 시간을 기준으로 인덱싱하므로 시차 문제 해결됨
         echo "{\"host\": \"github-runner\", \"user\": \"admin\", \"process_name\": \"pwsh\", \"command_line\": \"Invoke-AtomicTest T1059.001 -TestNumbers 1\", \"action\": \"allowed\"}" > attack.json
         
-        # 3. Splunk에 로그 주입
+        # 3. 로그 주입
         docker cp attack.json my-splunk-lab:/tmp/
         docker exec --user root my-splunk-lab chown splunk:splunk /tmp/attack.json
         docker exec --user splunk my-splunk-lab /opt/splunk/bin/splunk add oneshot /tmp/attack.json -index main -sourcetype _json -auth admin:admin1234
