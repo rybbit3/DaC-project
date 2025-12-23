@@ -31,39 +31,26 @@ jobs:
     - name: Build Splunk Config
       run: python3 pipeline.py
 
-  # 4. [Deploy] Docker 컨테이너로 배포 
+# 4. [Deploy] Docker 컨테이너로 배포 
     - name: Deploy to Splunk
       run: |
-        # [수정 1] 목적지 폴더가 없으면 에러나므로 강제로 생성 (mkdir -p)
+        # 목적지 폴더 생성 (Root 권한 필요)
         docker exec --user root my-splunk-lab mkdir -p /opt/splunk/etc/apps/search/local
         
-        # [수정 2] 파일 복사
+        # 설정 파일 복사
         docker cp savedsearches.conf my-splunk-lab:/opt/splunk/etc/apps/search/local/
         
-        # [수정 3] Splunk가 파일을 읽을 수 있게 권한 수정 (Root -> splunk 유저)
-        docker exec --user root my-splunk-lab chown -R splunk:splunk /opt/splunk/etc/apps/search/local
+        # [핵심 수정 1] Splunk 설치 경로 전체(/opt/splunk)의 소유권을 splunk 유저에게 넘깁니다.
+        # 이렇게 해야 'Permission denied' 에러가 싹 사라집니다.
+        docker exec --user root my-splunk-lab chown -R splunk:splunk /opt/splunk
         
-        # Splunk 설정을 다시 읽어오기
-        # splunk 명령어 앞에 /opt/splunk/bin/ 을 붙여줍니다.
-        docker exec my-splunk-lab /opt/splunk/bin/splunk _internal call /services/data/ui/views/_reload -auth admin:admin1234 || true
+        # [핵심 수정 2] Splunk 명령어는 반드시 '--user splunk'로 실행해야 꼬이지 않습니다.
+        docker exec --user splunk my-splunk-lab /opt/splunk/bin/splunk _internal call /services/data/ui/views/_reload -auth admin:admin1234 || true
 
         # 재시작 및 대기
         docker restart my-splunk-lab
         echo "⏳ Splunk 재시작 대기 중..."
         sleep 60
-
-# # 5. [Test] Atomic Red Team 공격 실행 (Attack Simulation)
-#     - name: Execute Attack (T1059.001)
-#       run: |
-#         export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin
-#         echo "⚔️ 공격 시뮬레이션 시작!"
-        
-#         # [수정] 경로 걱정 없이, 없으면 알아서 설치하고 바로 실행하는 안전한 코드입니다.
-#         pwsh -Command "
-#           IEX (IWR 'https://raw.githubusercontent.com/redcanaryco/invoke-atomicredteam/master/install-atomicredteam.ps1' -UseBasicParsing);
-#           Install-AtomicRedteam -getAtomics -Force;
-#           Invoke-AtomicTest T1059.001 -TestNumbers 1
-#         "
 
 # 5. [Test] Atomic Red Team 공격 실행 & 로그 주입
     - name: Execute Attack & Ingest Log
@@ -71,22 +58,23 @@ jobs:
         export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin
         echo "⚔️ 공격 시뮬레이션 시작!"
         
-        # 1. 실제 공격 수행 (프로세스 실행)
+        # 1. 실제 공격 수행
         pwsh -Command "
           IEX (IWR 'https://raw.githubusercontent.com/redcanaryco/invoke-atomicredteam/master/install-atomicredteam.ps1' -UseBasicParsing);
           Install-AtomicRedteam -getAtomics -Force;
           Invoke-AtomicTest T1059.001 -TestNumbers 1
         "
 
-        # 2. [핵심] 공격 로그 생성 (EDR 에이전트가 하는 일을 대신 수행)
-        # Sigma 룰이 탐지할 수 있도록 'command_line=...' 형태의 Key-Value 로그를 만듭니다.
+        # 2. 공격 로그 생성
         echo "$(date) host=github-runner user=admin process_name=pwsh command_line=\"Invoke-AtomicTest T1059.001 -TestNumbers 1\" action=allowed" > attack.log
         
-        # 3. Splunk에 로그 강제 주입 (One Shot Upload)
+        # 3. Splunk에 로그 강제 주입
         docker cp attack.log my-splunk-lab:/tmp/
-        # -index main : 로그를 메인 저장소에 넣음
-        # -sourcetype linux_secure : 리눅스 보안 로그처럼 위장
-        docker exec my-splunk-lab /opt/splunk/bin/splunk add oneshot /tmp/attack.log -index main -sourcetype linux_secure -auth admin:admin1234
+        
+        # [핵심 수정 3] 로그 주입할 때도 '--user splunk' 필수!
+        # 로그 파일 권한도 맞춰줍니다.
+        docker exec --user root my-splunk-lab chown splunk:splunk /tmp/attack.log
+        docker exec --user splunk my-splunk-lab /opt/splunk/bin/splunk add oneshot /tmp/attack.log -index main -sourcetype linux_secure -auth admin:admin1234
 
 
     # 6. [Verify] 탐지 검증
