@@ -1,0 +1,48 @@
+name: End-to-End DaC Pipeline
+
+on:
+  push:
+    branches: [ "main" ]
+
+jobs:
+  dev-sec-ops-cycle:
+    runs-on: self-hosted  # [중요] 사용자 맥북에서 실행됨
+    
+    steps:
+    # 1. 코드 최신화
+    - name: Checkout Code
+      uses: actions/checkout@v3
+
+    # 2. 필수 라이브러리 설치 (가상환경 대신 로컬에 직접 설치하거나 경로 지정)
+    - name: Install Dependencies
+      run: |
+        pip3 install sigma-cli pyyaml requests
+        sigma plugin install splunk || true
+
+    # 3. [Build] Sigma 룰 -> Splunk 설정 변환
+    - name: Build Splunk Config
+      run: python3 pipeline.py
+
+    # 4. [Deploy] Docker 컨테이너로 배포
+    - name: Deploy to Splunk
+      run: |
+        docker cp savedsearches.conf my-splunk-lab:/opt/splunk/etc/apps/search/local/
+        # Splunk 설정을 다시 읽어오기 (재시작 없이 reload로 시간 단축)
+        docker exec my-splunk-lab splunk _internal call /services/data/ui/views/_reload -auth admin:admin1234 || true
+        # 확실하게 하려면 재시작 (시간 좀 걸림)
+        docker restart my-splunk-lab
+        # 부팅 대기 (Splunk 덩치가 커서 1분 대기 필요)
+        echo "⏳ Splunk 재시작 대기 중..."
+        sleep 60
+
+    # 5. [Test] Atomic Red Team 공격 실행 (Attack Simulation)
+    - name: Execute Attack (T1059.001)
+      run: |
+        echo "⚔️ 공격 시뮬레이션 시작!"
+        # 맥북의 PowerShell(pwsh)을 이용해 공격 실행
+        pwsh -Command "Invoke-AtomicTest T1059.001 -TestNumbers 1"
+
+    # 6. [Verify] 탐지 검증
+    - name: Verify Detection
+      run: |
+        python3 verify.py
