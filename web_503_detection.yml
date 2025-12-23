@@ -1,0 +1,14 @@
+title: Web Server 503 Error Detection
+id: 56d35446-a36c-486a-8488-69315535359a
+status: test
+description: 웹 서버에서 503(Service Unavailable) 에러가 발생하는 것을 탐지합니다.
+author: User
+date: 2025/12/23
+logsource:
+    category: web_server
+    product: apache
+detection:
+    selection:
+        status: 503
+    condition: selection
+level: medium

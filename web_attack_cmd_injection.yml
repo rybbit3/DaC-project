@@ -1,0 +1,24 @@
+title: Web Server Command Injection Attempt
+id: 9a613303-7f25-4c6e-826b-07755535359b
+status: experimental
+description: URL이나 파라미터에 시스템 명령어 실행 시도가 포함된 요청을 탐지합니다.
+author: User
+date: 2025/12/23
+logsource:
+    category: web_server
+    product: apache
+detection:
+    selection:
+        # 공격자가 흔히 쓰는 명령어 키워드들
+        uri_query|contains:
+            - 'cmd.exe'
+            - '/bin/sh'
+            - '/bin/bash'
+            - 'whoami'
+            - 'wget'
+            - 'curl'
+    condition: selection
+level: high
+tags:
+    - attack.execution
+    - attack.t1059
