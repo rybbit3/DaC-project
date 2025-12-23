@@ -48,9 +48,9 @@ def run_pipeline():
                 query = result.stdout.strip()
                 
                 # 3. Splunk 설정 작성
-                stanza = f"""
+                stanza = f"""   
 [{title}]
-search = {query}
+search = index=main {query}
 description = {description}
 enable_sched = 1
 cron_schedule = * * * * *

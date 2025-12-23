@@ -31,28 +31,37 @@ jobs:
     - name: Build Splunk Config
       run: python3 pipeline.py
 
-# 4. [Deploy] 설정 파일(룰, 인덱스) 배포
-    - name: Deploy to Splunk
+# 5. [Test] 공격 및 로그 주입
+    - name: Execute Attack & Ingest Log
       run: |
-        # 목적지 폴더 생성
-        docker exec --user root my-splunk-lab mkdir -p /opt/splunk/etc/apps/search/local
+        export PATH=$PATH:/opt/homebrew/bin:/usr/local/bin
+        echo "⚔️ 공격 시뮬레이션 시작!"
         
-        # [핵심] 1. 룰 파일(savedsearches.conf) 복사
-        docker cp savedsearches.conf my-splunk-lab:/opt/splunk/etc/apps/search/local/
-        
-        # [핵심] 2. 인덱스 설정 파일(indexes.conf) 복사 -> 이제 인덱스 사라질 걱정 끝!
-        docker cp indexes.conf my-splunk-lab:/opt/splunk/etc/apps/search/local/
-        
-        # 3. 권한 대통합 (Root -> Splunk)
-        docker exec --user root my-splunk-lab chown -R splunk:splunk /opt/splunk
-        
-        # 4. 설정 리로드 (Splunk 유저로 실행)
-        docker exec --user splunk my-splunk-lab /opt/splunk/bin/splunk _internal call /services/data/ui/views/_reload -auth admin:admin1234 || true
+        # 1. 공격 수행
+        pwsh -Command "
+          IEX (IWR 'https://raw.githubusercontent.com/redcanaryco/invoke-atomicredteam/master/install-atomicredteam.ps1' -UseBasicParsing);
+          Install-AtomicRedteam -getAtomics -Force;
+          Invoke-AtomicTest T1059.001 -TestNumbers 1
+        "
 
-        # 재시작
-        docker restart my-splunk-lab
-        echo "⏳ Splunk 재시작 대기 중..."
-        sleep 60
+        # 2. [핵심 수정] "Kitchen Sink" JSON 생성 (필드명 불일치 원천 봉쇄)
+        # Sigma가 CommandLine을 찾든, command_line을 찾든, cmdline을 찾든 무조건 걸리게 다 넣습니다.
+        echo '{
+          "host": "github-runner",
+          "user": "admin",
+          "process_name": "pwsh",
+          "Image": "pwsh",
+          "process": "pwsh",
+          "CommandLine": "Invoke-AtomicTest T1059.001 -TestNumbers 1",
+          "command_line": "Invoke-AtomicTest T1059.001 -TestNumbers 1",
+          "cmdline": "Invoke-AtomicTest T1059.001 -TestNumbers 1",
+          "action": "allowed"
+        }' > attack.json
+        
+        # 3. 로그 주입
+        docker cp attack.json my-splunk-lab:/tmp/
+        docker exec --user root my-splunk-lab chown splunk:splunk /tmp/attack.json
+        docker exec --user splunk my-splunk-lab /opt/splunk/bin/splunk add oneshot /tmp/attack.json -index main -sourcetype _json -auth admin:admin1234
 
   # 5. [Test] 공격 및 로그 주입
     - name: Execute Attack & Ingest Log
