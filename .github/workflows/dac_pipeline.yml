@@ -34,24 +34,29 @@ jobs:
 # 4. [Deploy] Docker 컨테이너로 배포 
     - name: Deploy to Splunk
       run: |
-        # 목적지 폴더 생성 (Root 권한 필요)
-        docker exec --user root my-splunk-lab mkdir -p /opt/splunk/etc/apps/search/local
+        # [수정 1] 권한 문제 원천 봉쇄 (Splunk 폴더 전체 소유권 변경)
+        docker exec --user root my-splunk-lab chown -R splunk:splunk /opt/splunk
+        
+        # [핵심 해결책] 인시던트 저장용 Index 자동 생성
+        # 컨테이너가 재성성되더라도 파이프라인이 알아서 인덱스를 만듭니다.
+        # (이미 존재하면 에러가 날 수 있으니 || true 로 무시)
+        docker exec --user splunk my-splunk-lab /opt/splunk/bin/splunk add index incidents -auth admin:admin1234 || true
+        
+        # 목적지 폴더 생성
+        docker exec --user splunk my-splunk-lab mkdir -p /opt/splunk/etc/apps/search/local
         
         # 설정 파일 복사
         docker cp savedsearches.conf my-splunk-lab:/opt/splunk/etc/apps/search/local/
         
-        # [핵심 수정 1] Splunk 설치 경로 전체(/opt/splunk)의 소유권을 splunk 유저에게 넘깁니다.
-        # 이렇게 해야 'Permission denied' 에러가 싹 사라집니다.
-        docker exec --user root my-splunk-lab chown -R splunk:splunk /opt/splunk
+        # 복사된 파일 권한 재수정 (cp는 root로 들어가므로)
+        docker exec --user root my-splunk-lab chown splunk:splunk /opt/splunk/etc/apps/search/local/savedsearches.conf
         
-        # [핵심 수정 2] Splunk 명령어는 반드시 '--user splunk'로 실행해야 꼬이지 않습니다.
-        docker exec --user splunk my-splunk-lab /opt/splunk/bin/splunk _internal call /services/data/ui/views/_reload -auth admin:admin1234 || true
-
-        # 재시작 및 대기
+        # 재시작 (설정 적용)
         docker restart my-splunk-lab
         echo "⏳ Splunk 재시작 대기 중..."
         sleep 60
 
+        
 # 5. [Test] Atomic Red Team 공격 실행 & 로그 주입
     - name: Execute Attack & Ingest Log
       run: |
