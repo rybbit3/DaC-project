@@ -1,0 +1,14 @@
+title: Detect Custom Security Alert
+description: /tmp/test.log 파일에 기록되는 보안 경고 키워드 감지
+status: experimental
+author: admin
+logsource:
+  product: linux
+  definition: /tmp/test.log  # 수집 대상을 명시
+detection:
+  selection:
+    raw_text: '*SECURITY_ALERT*' # 우리가 echo로 넣은 키워드
+  condition: selection
+falsepositives:
+  - 시스템 관리자의 테스트 목적 로그 생성
+level: medium
