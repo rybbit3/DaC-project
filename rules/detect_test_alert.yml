@@ -1,0 +1,12 @@
+title: GitHub Action Test Rule
+description: GitHub Actions 배포 테스트용 룰입니다.
+status: experimental
+author: admin
+logsource:
+  product: linux
+  definition: /tmp/test.log
+detection:
+  selection:
+    command: 'TEST_SUCCESS' # 이번엔 이 키워드를 탐지해봅시다.
+  condition: selection
+level: low
