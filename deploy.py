@@ -22,14 +22,14 @@ def deploy_all_rules():
                 
                 print(f"🚀 Deploying: {rule['title']} ({filename})")
 
-                # [수정] 다양한 키(command, raw_text 등)를 유연하게 탐색
+                # [개선] command가 없으면 raw_text를 찾고, 둘 다 없으면 기본 키워드 적용
                 selection = rule.get("detection", {}).get("selection", {})
-                search_keyword = selection.get("command") or selection.get("raw_text") or "*"
+                search_keyword = selection.get("command") or selection.get("raw_text") or "SECURITY_ALERT"
 
                 payload = {
                     "name": rule['title'],
                     "search": f'index=* source="/tmp/test.log" "{search_keyword}"',
-                    "description": rule.get('description', ''),
+                    "description": rule.get('description', 'Deployed via DaC'),
                     "alert_type": "number of events",
                     "alert_comparator": "greater than",
                     "alert_threshold": "0",
@@ -41,16 +41,16 @@ def deploy_all_rules():
                     "action.jira_service_desk_simple_addon.param.issue_type": "Task"
                 }
 
-                # [팁] 중복 시 업데이트하려면 URL에 이름 추가: .../saved/searches/{rule_name}
                 api_endpoint = f"{SPLUNK_URL}/servicesNS/admin/search/saved/searches"
                 response = requests.post(api_endpoint, data=payload, auth=(USERNAME, PASSWORD), verify=False)
 
                 if response.status_code in [201, 200]:
                     print(f"  ✅ Success!")
                 else:
-                    print(f"  ❌ Failed: {response.json()['messages'][0]['text']}")
+                    print(f"  ❌ Failed: {response.text}")
 
             except Exception as e:
+                # 에러가 발생해도 스크립트가 멈추지 않고 다음 파일로 넘어가도록 처리
                 print(f"  ⚠️ Error processing {filename}: {e}")
 
 if __name__ == "__main__":
