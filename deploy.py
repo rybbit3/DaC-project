@@ -1,68 +1,35 @@
-import requests
-import yaml
-import sys
-import urllib3
-
-# SSL 경고 무시 (로컬 인증서 때문)
-urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
-
-# ================= 설정 =================
-SPLUNK_URL = "https://localhost:8089"  # 관리 포트
-USERNAME = "admin"
-PASSWORD = "admin1234"  # Docker 실행 시 설정한 비번
-SIGMA_FILE = "rules/detect_whoami.yml" # 배포할 룰 파일 경로
-# =======================================
-
 def deploy_rule():
     # 1. Sigma(YAML) 파일 읽기
-    print(f"📂 Reading rule file: {SIGMA_FILE}...")
     with open(SIGMA_FILE, 'r') as f:
         rule_content = yaml.safe_load(f)
 
-    # 2. 필요한 정보 추출 (시나리오 -> 설정값)
-    rule_name = rule_content['title']
-    description = rule_content['description']
+    # 2. YAML에서 정보 동적 추출
+    rule_name = rule_content.get('title', 'Default Title')
+    description = rule_content.get('description', 'No Description')
     
-    # 원래는 여기서 'sigmatools'로 자동 변환해야 하지만, 
-    # 실습의 단순화를 위해 변환된 SPL을 직접 정의하겠습니다.
-    # (이전 실습 결과물)
-    splunk_query = 'index=linux CommandLine="*whoami*"' 
+    # [핵심] YAML의 detection 필드를 기반으로 쿼리 생성 (단순화 버전)
+    # 실제로는 룰마다 쿼리가 다르므로, YAML에 'splunk_query'라는 커스텀 필드를 넣거나 
+    # selection의 값을 읽어오도록 로직을 짤 수 있습니다.
+    command = rule_content['detection']['selection']['command']
+    splunk_query = f'index=* source="/tmp/test.log" "{command}"'
 
-    print(f"🔄 Converting to SPL: {splunk_query}")
+    print(f"🔄 Deploying Rule: {rule_name}")
+    print(f"🔍 Generated SPL: {splunk_query}")
 
-    # 3. Splunk API에 쏘기 (여기가 핵심!)
-    # Endpoint: Saved Search를 생성하는 주소
-    api_endpoint = f"{SPLUNK_URL}/servicesNS/admin/search/saved/searches"
-    
+    # 3. Payload 자동 구성
     payload = {
-        "name": rule_name,              # 룰 이름
-        "search": splunk_query,         # 변환된 쿼리 (SPL)
-        "description": description,     # 설명
-        "is_visible": "1",              # 메뉴에서 보이게 설정
+        "name": rule_name,
+        "search": splunk_query,  # <-- 여기서 자동으로 들어감
+        "description": description,
         "alert_type": "number of events",
         "alert_comparator": "greater than",
-        "alert_threshold": "0",         # 1건이라도 탐지되면 경보
-        "cron_schedule": "* * * * *",   # 1분마다 실행 (실시간 감시 흉내)
-        "is_scheduled": "1"             # 스케줄 활성화
+        "alert_threshold": "0",
+        "cron_schedule": "* * * * *",
+        "is_scheduled": "1",
+        "action.jira_service_desk_simple_addon": "1",
+        "action.jira_service_desk_simple_addon.param.account": "rybbit3",
+        "action.jira_service_desk_simple_addon.param.project": "SMS",
+        "action.jira_service_desk_simple_addon.param.issue_type": "Task"
     }
-
-    try:
-        response = requests.post(
-            api_endpoint, 
-            data=payload, 
-            auth=(USERNAME, PASSWORD), 
-            verify=False # 로컬이라 SSL 검증 끔
-        )
-
-        if response.status_code == 201: # 생성 성공
-            print(f"✅ [SUCCESS] Rule '{rule_name}' successfully deployed to Splunk!")
-        elif response.status_code == 409: # 이미 있음
-            print(f"⚠️ [EXISTS] Rule '{rule_name}' already exists. (Consider update logic)")
-        else:
-            print(f"❌ [FAIL] Error: {response.text}")
-
-    except Exception as e:
-        print(f"❌ Connection Failed: {e}")
-
-if __name__ == "__main__":
-    deploy_rule()
+    
+    # ... (이후 API 호출 로직은 동일)
