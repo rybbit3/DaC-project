@@ -1,0 +1,14 @@
+title: Detect Whoami Execution
+description: 공격자가 권한 확인을 위해 사용하는 whoami 명령어 감지
+status: experimental
+author: admin
+logsource:
+  product: linux
+  service: auditd
+detection:
+  selection:
+    command: 'whoami'
+  condition: selection
+falsepositives:
+  - 관리자의 정상적인 시스템 점검
+level: medium
