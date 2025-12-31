@@ -1,0 +1,21 @@
+title: Detect Netcat Reverse Shell
+id: 5678-1234-90ab-cdef
+status: experimental
+description: Detects the execution of Netcat (nc) with flags (-e, -c) typically used to spawn a reverse shell.
+author: Security Admin
+date: 2026/01/01
+logsource:
+    category: process_creation
+    product: linux
+detection:
+    selection:
+        CommandLine|contains:
+            - 'nc -e'
+            - 'nc -c'
+            - 'ncat -e'
+            - 'netcat -e'
+    condition: selection
+level: high
+tags:
+    - attack.execution
+    - attack.t1059
